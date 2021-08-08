@@ -77,6 +77,7 @@ def mainImpl(cwd: str, cc_json_file: str, output_file: str,
     cwd0 = cwd
     os.chdir(cwd)
     exists = set()
+    exts = set()  # file extension
 
     js = loadCompilecommandsJson(cc_json_file)
     with open(output_file, mode='w+', encoding='utf-8') as fd:
@@ -115,6 +116,10 @@ def mainImpl(cwd: str, cc_json_file: str, output_file: str,
 
             # write path of src and include files
             for f in srcs+includes:
+                ext = os.path.splitext(f)[-1]
+                if ext:
+                    exts.add(ext)
+
                 if paths_unique:
                     if f in exists:
                         continue
@@ -124,6 +129,8 @@ def mainImpl(cwd: str, cc_json_file: str, output_file: str,
                 print(f, file=fd)
             if not paths_compact:
                 print('', file=fd)  # empty line
+
+    print('file extensions: {}'.format(sorted(exts)))
 
 
 def main(args):
