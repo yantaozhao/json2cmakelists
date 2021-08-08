@@ -67,7 +67,7 @@ def extractFilesFromMakeRule(rule: str) -> dict:
     parts = list(filter(lambda f: len(f), map(lambda p: p.strip(), parts)))
 
     dic['target'] = target
-    dic['src'] = parts[0]  # FIXME: is the 1st file source code?
+    dic['src'] = parts[0]  # FIXME: is the 1st file really the source code?
     dic['include'] = parts[1:]
     return dic
 
@@ -75,6 +75,7 @@ def extractFilesFromMakeRule(rule: str) -> dict:
 def mainImpl(cwd: str, cc_json_file: str, output_file: str,
              paths_unique: bool = True, paths_compact: bool = True, path_abs: bool = True):
     cwd0 = cwd
+    os.chdir(cwd)
     exists = set()
 
     js = loadCompilecommandsJson(cc_json_file)
@@ -194,5 +195,4 @@ Supported compilers: gcc/g++, clang/clang++"""
 
 
 if __name__ == '__main__':
-    args = parse_args()
-    main(args)
+    main(parse_args())
