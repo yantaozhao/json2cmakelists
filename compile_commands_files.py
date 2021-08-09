@@ -85,7 +85,9 @@ def mainImpl(cwd: str, cc_json_file: str, output_file: str,
             print('{}/{}'.format(ji, len(js)))
             cur_dir = dic['directory']
             cur_fil = dic['file']
-            cur_cmd = dic['command']
+            cur_cmd = dic.get('command')
+            if not cur_cmd:
+                cur_cmd = ' '.join(dic.get('arguments'))
 
             if not os.path.isabs(cur_dir):
                 cur_dir = os.path.abspath(os.path.join(cwd0, cur_dir))
