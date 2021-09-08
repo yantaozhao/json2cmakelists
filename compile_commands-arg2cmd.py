@@ -10,9 +10,13 @@ compile_commands_postfix = f'{time.strftime("%Y-%m-%d_%H-%M-%S_%Z")}'
 
 def usage():
     doc = """
-    Usage: convert Bear compile_commands.json to official modern form.
-        script.py compile_commands.json
-    """
+Usage: convert compile_commands.json with `arguments` entry to `command` form.
+    script.py compile_commands.json
+
+Ref:
+    https://clang.llvm.org/docs/JSONCompilationDatabase.html
+    https://releases.llvm.org/4.0.0/tools/clang/docs/JSONCompilationDatabase.html
+"""
     print(doc)
 
 
@@ -21,7 +25,7 @@ def getOutputPath(path: str):
     return newname
 
 
-def modernCompileCommandsForm(inputjson_path: str, outputjson_path: str):
+def cvtCompileCommandsArg2cmd(inputjson_path: str, outputjson_path: str):
     with open(inputjson_path, encoding='utf-8') as fi, open(outputjson_path, mode='w+', encoding='utf-8') as fo:
         j = json.load(fi)
 
@@ -32,6 +36,8 @@ def modernCompileCommandsForm(inputjson_path: str, outputjson_path: str):
                 'command': ' '.join(unit['arguments']),  # arguments -> command
                 'file': unit['file'],
             }
+            if 'output' in unit:
+                item.update({'output': unit['output']})
             s = json.dumps(item, indent=2)
             if n != 0:
                 fo.write(',\n')
@@ -40,14 +46,17 @@ def modernCompileCommandsForm(inputjson_path: str, outputjson_path: str):
 
 
 def main(argv):
-    if len(argv) != 2:
+    if len(argv) == 1:
+        inputjson_path = 'compile_commands.json'  # default
+    elif (len(argv) == 2) and (argv[1] not in ('-h', '--help')):
+        inputjson_path = argv[1]
+    else:
         usage()
         sys.exit()
-
-    inputjson_path = argv[1]
     outputjson_path = getOutputPath(inputjson_path)
-    modernCompileCommandsForm(inputjson_path, outputjson_path)
-    print(f'result: {outputjson_path}')
+
+    cvtCompileCommandsArg2cmd(inputjson_path, outputjson_path)
+    print(f'result: {inputjson_path} --> {outputjson_path}')
 
 
 if __name__ == "__main__":
