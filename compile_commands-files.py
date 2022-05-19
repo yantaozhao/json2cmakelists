@@ -2,6 +2,7 @@ import sys
 import os
 import json
 import re
+import shlex
 import subprocess
 import argparse
 
@@ -12,29 +13,36 @@ def loadCompilecommandsJson(jsonfile: str) -> dict:
     return js
 
 
-def changeCompilerCommand(cmdline: str) -> str:
+def changeCompilerCommand(cmdline) -> str:
     """
-    add -MM, delete -o
+    delete -o, add -MM
     """
-    # if cmdline.find('\\') >= 0:
-    #     raise Exception('\\ found in cmdline: {}'.format(cmdline))
-    parts = cmdline.split()
+    if isinstance(cmdline, (list, tuple)):
+        parts = cmdline
+    elif isinstance(cmdline, str):
+        parts = shlex.split(cmdline)
+    else:
+        raise Exception("unknown command")
 
+    # find -o, erase it
     o_idx = -1
-    o_n = 0
+    o_cnt = 0
     for i, p in enumerate(parts):
         if p == '-o':
             o_idx = i
-            o_n += 1
-    if o_n > 1:
+            o_cnt += 1
+    if o_cnt > 1:
         raise Exception('multi -o found: {}'.format(cmdline))
     if o_idx >= 0:
         assert o_idx != 0, '-o at the head of: {}'.format(cmdline)
         parts[o_idx] = ''
-        parts[o_idx+1] = ''
+        parts[o_idx + 1] = ''
 
+    # add -MM
     parts.insert(1, '-MM')
-    cmdline2 = ' '.join(parts)
+    parts = list(filter(lambda p: p.strip(), parts))
+
+    cmdline2 = shlex.join(parts)  # type:str
     return cmdline2
 
 
@@ -43,7 +51,7 @@ def runCmd(cmdline: str, env: dict = None) -> str:
     if env and len(env):
         cp = subprocess.run(cmdline, shell=True, check=True, capture_output=True, text=True, env=env)
     else:
-        cp = subprocess.run(cmdline, shell=True, check=True, capture_output=True, text=True,)
+        cp = subprocess.run(cmdline, shell=True, check=True, capture_output=True, text=True, )
     return cp.stdout
 
 
@@ -52,8 +60,8 @@ def extractFilesFromMakeRule(rule: str) -> dict:
     make's rule -> dict
     """
     dic = {
-        'target': '',
-        'src': '',
+        'target':  '',
+        'src':     '',
         'include': []
     }
 
@@ -61,9 +69,9 @@ def extractFilesFromMakeRule(rule: str) -> dict:
 
     colon = rule.find(':')
     target = rule[:colon].strip()
-    others = rule[colon+1:].strip()
+    others = rule[colon + 1:].strip()
 
-    parts = re.split(r'\s+|\\', others)
+    parts = shlex.split(others)  # split file lists
     parts = list(filter(lambda f: len(f), map(lambda p: p.strip(), parts)))
 
     dic['target'] = target
@@ -74,7 +82,7 @@ def extractFilesFromMakeRule(rule: str) -> dict:
 
 def mainImpl(cwd: str, cc_json_file: str, output_file: str,
              paths_unique: bool = True, paths_compact: bool = True, path_abs: bool = True):
-    cwd0 = cwd
+    cwd0 = cwd  # absolute path
     os.chdir(cwd)
     exists = set()
     exts = set()  # file extension
@@ -83,17 +91,23 @@ def mainImpl(cwd: str, cc_json_file: str, output_file: str,
     with open(output_file, mode='w+', encoding='utf-8') as fd:
         for ji, dic in enumerate(js, start=1):
             print('{}/{}'.format(ji, len(js)))
+
             cur_dir = dic['directory']
             cur_fil = dic['file']
-            cur_cmd = dic.get('command')
+            cur_cmd = dic.get('command')  # type: str
             if not cur_cmd:
-                cur_cmd = ' '.join(dic.get('arguments'))
+                cur_cmd = dic.get('arguments')  # type: dict
 
+            # respect to current command and directory
             if not os.path.isabs(cur_dir):
                 cur_dir = os.path.abspath(os.path.join(cwd0, cur_dir))
             if cwd != cur_dir:
-                os.chdir(cur_dir)
-                cwd = cur_dir
+                try:
+                    os.chdir(cur_dir)
+                    cwd = cur_dir
+                except:
+                    print(f"chdir to {cur_dir} fail!")
+                    raise
 
             if not os.path.isabs(cur_fil):
                 cur_fil = os.path.abspath(os.path.join(cur_dir, cur_fil))
@@ -101,6 +115,7 @@ def mainImpl(cwd: str, cc_json_file: str, output_file: str,
                 print('Warning: \\ found in path, result maybe incorrect: {}'.format(cur_fil))
             cur_fil_dir = os.path.dirname(cur_fil)
 
+            # tweak command line, then run it by compiler
             cmdline = changeCompilerCommand(cur_cmd)
             rule = runCmd(cmdline)
             rule_dic = extractFilesFromMakeRule(rule)
@@ -117,7 +132,7 @@ def mainImpl(cwd: str, cc_json_file: str, output_file: str,
                 includes = list(map(lambda h: h if os.path.isabs(h) else os.path.abspath(os.path.join(cur_fil_dir, h)), includes))
 
             # write path of src and include files
-            for f in srcs+includes:
+            for f in srcs + includes:
                 ext = os.path.splitext(f)[-1]
                 if ext:
                     exts.add(ext)
@@ -132,56 +147,60 @@ def mainImpl(cwd: str, cc_json_file: str, output_file: str,
             if not paths_compact:
                 print('', file=fd)  # empty line
 
-    print('file extensions: {}'.format(sorted(exts)))
+    print('all file extensions: {}'.format(sorted(exts)))
 
 
 def main(args):
     cwd = os.getcwd()
+    print(f"cwd: {cwd}")
 
-    compile_commands_json_file = args.input
-    output_file = args.output
-    paths_unique = True
-    paths_compact = True
-    path_abs = True
+    opt_compile_commands_json = args.input
+    opt_output_file = args.output
+    opt_paths_unique = True
+    opt_paths_compact = True
+    opt_path_abs = True
 
-    compile_commands_json_file = os.path.abspath(os.path.join(cwd, compile_commands_json_file))
+    if not os.path.exists(opt_compile_commands_json):
+        raise Exception(f"{opt_compile_commands_json} not exist!")
 
-    if os.path.exists(output_file) and os.path.isfile(output_file):
+    opt_compile_commands_json = os.path.abspath(os.path.join(cwd, opt_compile_commands_json))
+
+    if os.path.exists(opt_output_file) and os.path.isfile(opt_output_file):
         while True:
-            yn = input('{} already exist! Overwrite?[y/N]:'.format(output_file))
+            yn = input('{} already exist! Overwrite?[y/N]:'.format(opt_output_file))
             if yn in ('y', 'Y',):
                 break
             if yn in ('n', 'N', '',):
                 print('exit.')
                 sys.exit()
             print('make a choice...')
-    output_file = os.path.abspath(os.path.join(cwd, output_file))
+    opt_output_file = os.path.abspath(os.path.join(cwd, opt_output_file))
 
     if args.paths == 'unique':
-        paths_unique = True
+        opt_paths_unique = True
     elif args.paths == 'full':
-        paths_unique = False
+        opt_paths_unique = False
     else:
         raise Exception('unknown value: {}'.format(args.paths))
 
     if args.no_compact_paths:
-        paths_compact = False
+        opt_paths_compact = False
     else:
-        paths_compact = True
+        opt_paths_compact = True
 
     if args.path_style == 'absolute':
-        path_abs = True
+        opt_path_abs = True
     elif args.path_style == 'relative':
-        path_abs = False
+        opt_path_abs = False
     else:
         raise Exception('unknown value: {}'.format(args.path_style))
 
-    json_cwd = os.path.dirname(compile_commands_json_file)
+    json_cwd = os.path.dirname(opt_compile_commands_json)
 
-    print('input:', compile_commands_json_file)
-    mainImpl(cwd=json_cwd, cc_json_file=compile_commands_json_file, output_file=output_file,
-             paths_unique=paths_unique, paths_compact=paths_compact, path_abs=path_abs)
-    print('output:', output_file)
+    print('input:', opt_compile_commands_json)
+    mainImpl(cwd=json_cwd, cc_json_file=opt_compile_commands_json, output_file=opt_output_file,
+             paths_unique=opt_paths_unique, paths_compact=opt_paths_compact, path_abs=opt_path_abs)
+    print('output:', opt_output_file)
 
 
 def parse_args():

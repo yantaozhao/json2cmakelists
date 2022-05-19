@@ -1,0 +1,12 @@
+[
+{
+  "directory": "/home/z/CLionProjects/hello world/build folder",
+  "command": "/usr/bin/c++   -std=c++14 -o CMakeFiles/hello_world.dir/main.cpp.o -c \"/home/z/CLionProjects/hello world/main.cpp\"",
+  "file": "/home/z/CLionProjects/hello world/main.cpp"
+},
+{
+  "directory": "/home/z/CLionProjects/hello world/build folder",
+  "command": "/usr/bin/c++   -std=c++14 -o CMakeFiles/hello_world.dir/mymath.cpp.o -c \"/home/z/CLionProjects/hello world/mymath.cpp\"",
+  "file": "/home/z/CLionProjects/hello world/mymath.cpp"
+}
+]

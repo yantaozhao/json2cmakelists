@@ -1,0 +1,28 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/c++",
+      "-std=c++14",
+      "-c",
+      "-o",
+      "CMakeFiles/hello_world.dir/main.cpp.o",
+      "/home/z/CLionProjects/hello world/main.cpp"
+    ],
+    "directory": "/home/z/CLionProjects/hello world/build folder",
+    "file": "/home/z/CLionProjects/hello world/main.cpp",
+    "output": "/home/z/CLionProjects/hello world/build folder/CMakeFiles/hello_world.dir/main.cpp.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/c++",
+      "-std=c++14",
+      "-c",
+      "-o",
+      "CMakeFiles/hello_world.dir/mymath.cpp.o",
+      "/home/z/CLionProjects/hello world/mymath.cpp"
+    ],
+    "directory": "/home/z/CLionProjects/hello world/build folder",
+    "file": "/home/z/CLionProjects/hello world/mymath.cpp",
+    "output": "/home/z/CLionProjects/hello world/build folder/CMakeFiles/hello_world.dir/mymath.cpp.o"
+  }
+]

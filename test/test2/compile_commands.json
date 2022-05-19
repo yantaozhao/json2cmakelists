@@ -1,0 +1,12 @@
+[
+{
+  "directory": "/home/z/CLionProjects/hello/cmake-build-debug",
+  "command": "/usr/bin/c++ -g -std=c++14 -o CMakeFiles/hello.dir/main.cpp.o -c /home/z/CLionProjects/hello/main.cpp",
+  "file": "/home/z/CLionProjects/hello/main.cpp"
+},
+{
+  "directory": "/home/z/CLionProjects/hello/cmake-build-debug",
+  "command": "/usr/bin/c++ -g -std=c++14 -o CMakeFiles/hello.dir/mymath.cpp.o -c /home/z/CLionProjects/hello/mymath.cpp",
+  "file": "/home/z/CLionProjects/hello/mymath.cpp"
+}
+]
