@@ -5,6 +5,7 @@ import re
 import shlex
 import subprocess
 import argparse
+from pathlib import Path
 
 
 def loadCompilecommandsJson(jsonfile: str) -> dict:
@@ -13,37 +14,69 @@ def loadCompilecommandsJson(jsonfile: str) -> dict:
     return js
 
 
-def changeCompilerCommand(cmdline) -> str:
+def changeCompilerCommand(cmdline):
     """
     delete -o, add -MM
     """
     if isinstance(cmdline, (list, tuple)):
-        parts = cmdline
+        arguments = list(cmdline)  # type: list
     elif isinstance(cmdline, str):
-        parts = shlex.split(cmdline)
+        arguments = shlex.split(cmdline)
     else:
         raise Exception("unknown command")
 
     # find -o, erase it
     o_idx = -1
     o_cnt = 0
-    for i, p in enumerate(parts):
-        if p == '-o':
+    for i, a in enumerate(arguments):
+        if a == '-o':
             o_idx = i
             o_cnt += 1
     if o_cnt > 1:
         raise Exception('multi -o found: {}'.format(cmdline))
     if o_idx >= 0:
         assert o_idx != 0, '-o at the head of: {}'.format(cmdline)
-        parts[o_idx] = ''
-        parts[o_idx + 1] = ''
+        arguments[o_idx] = ''
+        arguments[o_idx + 1] = ''
 
     # add -MM
-    parts.insert(1, '-MM')
-    parts = list(filter(lambda p: p.strip(), parts))
+    arguments.insert(1, '-MM')
+    arguments = list(filter(lambda p: p.strip(), arguments))
 
-    cmdline2 = shlex.join(parts)  # type:str
-    return cmdline2
+    cmdline2 = shlex.join(arguments)  # type:str
+    return cmdline2, arguments
+
+
+def getDefinitionFromArguments(argument: list):
+    """
+    get define from -Dxxx
+
+    :param argument:
+    :return: ['xxx', 'xxx=yyy']
+    """
+    defines = []
+    i, arg_len = 0, len(argument)
+    while i < arg_len:
+        a = argument[i].strip()  # type:str
+        """
+        cases:
+            -Dxxx
+            -D xxx
+            -Dxxx=yyy
+            -D xxx=yyy
+            -D xxx = yyy  # TODO:is this case exists?
+        """
+        d = None
+        if a == '-D':
+            i += 1
+            d = argument[i].strip()
+        elif a.startswith('-D'):
+            d = a[2:]
+
+        if d:
+            defines.append(d)
+        i += 1
+    return defines
 
 
 def runCmd(cmdline: str, env: dict = None) -> str:
@@ -80,15 +113,27 @@ def extractFilesFromMakeRule(rule: str) -> dict:
     return dic
 
 
-def mainImpl(cwd: str, cc_json_file: str, output_file: str,
+def mainImpl(cwd: str, cc_json_file: str, output_filelist: str, output_definition: str,
              paths_unique: bool = True, paths_compact: bool = True, path_abs: bool = True):
+    """
+
+    :param cwd:
+    :param cc_json_file:
+    :param output_filelist: output file for filelist
+    :param output_definition: output file for definition
+    :param paths_unique:
+    :param paths_compact:
+    :param path_abs:
+    :return:
+    """
     cwd0 = cwd  # absolute path
     os.chdir(cwd)
     exists = set()
-    exts = set()  # file extension
+    extentions = set()  # file extension
+    definitions = []
 
     js = loadCompilecommandsJson(cc_json_file)
-    with open(output_file, mode='w+', encoding='utf-8') as fd:
+    with open(output_filelist, mode='w+', encoding='utf-8') as fd_f:
         for ji, dic in enumerate(js, start=1):
             print('{}/{}'.format(ji, len(js)))
 
@@ -97,6 +142,7 @@ def mainImpl(cwd: str, cc_json_file: str, output_file: str,
             cur_cmd = dic.get('command')  # type: str
             if not cur_cmd:
                 cur_cmd = dic.get('arguments')  # type: dict
+            assert os.path.exists(cur_dir) and os.path.exists(cur_fil), f"{cur_dir} or {cur_fil} not exist!"
 
             # respect to current command and directory
             if not os.path.isabs(cur_dir):
@@ -111,17 +157,24 @@ def mainImpl(cwd: str, cc_json_file: str, output_file: str,
 
             if not os.path.isabs(cur_fil):
                 cur_fil = os.path.abspath(os.path.join(cur_dir, cur_fil))
-            if cur_fil.find('\\') >= 0:
-                print('Warning: \\ found in path, result maybe incorrect: {}'.format(cur_fil))
+            # if cur_fil.find('\\') >= 0:
+            #     print('Warning: \\ found in path, result maybe incorrect: {}'.format(cur_fil))
             cur_fil_dir = os.path.dirname(cur_fil)
 
-            # tweak command line, then run it by compiler
-            cmdline = changeCompilerCommand(cur_cmd)
+            # tweak command line
+            cmdline, argument = changeCompilerCommand(cur_cmd)
+
+            # definitions
+            defines = getDefinitionFromArguments(argument)
+            defines = filter(lambda x: x not in definitions, defines)
+            definitions.extend(defines)
+
+            # run it by compiler
             rule = runCmd(cmdline)
             rule_dic = extractFilesFromMakeRule(rule)
 
             # get src and include files
-            srcs: list = [cur_fil, rule_dic['src']]
+            srcs = [cur_fil, rule_dic['src']]
             includes: list = rule_dic['include']
 
             srcs = map(lambda s: s if os.path.isabs(s) else os.path.abspath(os.path.join(cur_dir, s)), srcs)
@@ -135,7 +188,7 @@ def mainImpl(cwd: str, cc_json_file: str, output_file: str,
             for f in srcs + includes:
                 ext = os.path.splitext(f)[-1]
                 if ext:
-                    exts.add(ext)
+                    extentions.add(ext)
 
                 if paths_unique:
                     if f in exists:
@@ -143,11 +196,13 @@ def mainImpl(cwd: str, cc_json_file: str, output_file: str,
                     else:
                         exists.add(f)
                 # TODO: relative path
-                print(f, file=fd)
+                print(f, file=fd_f)
             if not paths_compact:
-                print('', file=fd)  # empty line
+                print('', file=fd_f)  # empty line
+    with open(output_definition, mode='w+', encoding='utf-8') as fd_d:
+        print('\n'.join(definitions), file=fd_d)
 
-    print('all file extensions: {}'.format(sorted(exts)))
+    print('all file extensions: {}'.format(sorted(extentions)))
 
 
 def main(args):
@@ -155,7 +210,9 @@ def main(args):
     print(f"cwd: {cwd}")
 
     opt_compile_commands_json = args.input
-    opt_output_file = args.output
+    __compile_commands_json_path = Path(opt_compile_commands_json)
+    opt_output_filelist = os.path.join(__compile_commands_json_path.parent, __compile_commands_json_path.stem + "-filelist.txt")
+    opt_output_definition = os.path.join(__compile_commands_json_path.parent, __compile_commands_json_path.stem + "-definition.txt")
     opt_paths_unique = True
     opt_paths_compact = True
     opt_path_abs = True
@@ -163,18 +220,18 @@ def main(args):
     if not os.path.exists(opt_compile_commands_json):
         raise Exception(f"{opt_compile_commands_json} not exist!")
 
-    opt_compile_commands_json = os.path.abspath(os.path.join(cwd, opt_compile_commands_json))
-
-    if os.path.exists(opt_output_file) and os.path.isfile(opt_output_file):
+    if os.path.exists(opt_output_filelist) or os.path.exists(opt_output_definition):
         while True:
-            yn = input('{} already exist! Overwrite?[y/N]:'.format(opt_output_file))
+            yn = input('{} or {} already exist! Overwrite?[y/N]:'.format(opt_output_filelist, opt_output_definition))
             if yn in ('y', 'Y',):
                 break
             if yn in ('n', 'N', '',):
                 print('exit.')
                 sys.exit()
             print('make a choice...')
-    opt_output_file = os.path.abspath(os.path.join(cwd, opt_output_file))
+    opt_compile_commands_json = os.path.abspath(os.path.join(cwd, opt_compile_commands_json))
+    opt_output_filelist = os.path.abspath(os.path.join(cwd, opt_output_filelist))
+    opt_output_definition = os.path.abspath(os.path.join(cwd, opt_output_definition))
 
     if args.paths == 'unique':
         opt_paths_unique = True
@@ -198,20 +255,21 @@ def main(args):
     json_cwd = os.path.dirname(opt_compile_commands_json)
 
     print('input:', opt_compile_commands_json)
-    mainImpl(cwd=json_cwd, cc_json_file=opt_compile_commands_json, output_file=opt_output_file,
+    mainImpl(cwd=json_cwd, cc_json_file=opt_compile_commands_json,
+             output_filelist=opt_output_filelist, output_definition=opt_output_definition,
              paths_unique=opt_paths_unique, paths_compact=opt_paths_compact, path_abs=opt_path_abs)
-    print('output:', opt_output_file)
+    print('output:', opt_output_filelist)
+    print('output:', opt_output_definition)
 
 
 def parse_args():
     desc = r"""
 SYNOPSIS: get all src and included files, by adding `-MM` options to compiler and parse the output.
-Supported compilers: gcc/g++, clang/clang++"""
+Supported compilers: gcc/g++, clang/clang++
+"""
     ap = argparse.ArgumentParser(description=desc, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('input', type=str, default='compile_commands.json', nargs='?',
                     help='path to {0}. [default: {0}]'.format('compile_commands.json'))
-    ap.add_argument('output', type=str, default='compile_commands_filelist.txt', nargs='?',
-                    help='path to result file. [default: compile_commands_filelist.txt]')
     ap.add_argument('--paths', type=str, choices=['unique', 'full'], default='unique',
                     help='control if the output content paths can be duplicated. [default: unique]')
     ap.add_argument('--no-compact-paths', action='store_true',
