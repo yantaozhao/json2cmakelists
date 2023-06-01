@@ -171,6 +171,7 @@ def main():
     parser.add_argument('cmakebuild_root', type=str, help='root folder of cmake build')
     parser.add_argument('sourcetree_root', default='.', nargs='?', type=str, help='root folder of source tree')
     parser.add_argument('-p', '--output_prefix', type=str, default='output_compilecommands_', help="result filename's prefix")
+    parser.add_argument('-a', '--all', action='store_true', help='all files including system files')
     args = parser.parse_args()
     print(f'posix: {g_is_posix}; {vars(args)}')
 
@@ -213,21 +214,28 @@ def main():
 
         exists = set()
         with open(output_filelist_txt, mode='w', encoding='utf-8') as fd:
+            # files
             for fil in source_files:
                 exists.add(fil)
                 # fil = os.path.relpath(fil, sourcetree_root)
                 print(fil, file=fd)
 
-            print(file=fd)
+            print('', file=fd)
+
+            # sorted deps
+            tmp = set()
             for fil in include_files:
                 if fil in exists:
                     continue
-                if False:
+                if not args.all:
                     # only in-sourcetree files
                     if not fil.startswith(sourcetree_root):
                         continue
                 exists.add(fil)
                 # fil = os.path.relpath(fil, sourcetree_root)
+                tmp.add(fil)
+            tmp = sorted(tmp)
+            for fil in tmp:
                 print(fil, file=fd)
 
         if macros:
